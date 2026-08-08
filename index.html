@@ -181,6 +181,8 @@ function startScan() {
         </div>`;
       if (scanning) setTimeout(runScanLoop, 20);
     }
+  }
+  runScanLoop();
 }
 
 function stopScan() {
