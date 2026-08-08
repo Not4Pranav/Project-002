@@ -18,13 +18,39 @@ bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
 bot.intents.message_content = True
 
 
-def check_api(token):
+def check_username_available(username, token):
+    """Actually check if username is available by trying to claim it briefly via API."""
     if not token:
         return False, "No API key (DISCORD_TOKEN missing)"
     try:
-        headers = {"Authorization": f"Bot {token}"}
-        resp = requests.get("https://discord.com/api/v10/users/@me", headers=headers, timeout=5)
-        return resp.status_code == 200, f"API status: {resp.status_code}"
+        headers = {"Authorization": f"Bot {token}", "Content-Type": "application/json"}
+        # Get current bot username
+        me = requests.get("https://discord.com/api/v10/users/@me", headers=headers, timeout=5)
+        if me.status_code != 200:
+            return False, f"Failed to get bot info (status {me.status_code})"
+        original = me.json().get("username", "")
+        # Try to claim the test username briefly
+        patch_resp = requests.patch(
+            "https://discord.com/api/v10/users/@me",
+            headers=headers,
+            json={"username": username},
+            timeout=5
+        )
+        # Always change back to original regardless of result
+        try:
+            requests.patch(
+                "https://discord.com/api/v10/users/@me",
+                headers=headers,
+                json={"username": original},
+                timeout=5
+            )
+        except Exception:
+            pass
+        if patch_resp.status_code == 200:
+            return True, "Available (verified by briefly claiming via API)"
+        else:
+            data = patch_resp.json() if patch_resp.headers.get('content-type', '').startswith('application/json') else {}
+            return False, f"Not available (API status {patch_resp.status_code}) — {data.get('message', 'username taken or invalid')}"
     except Exception as ex:
         return False, f"API error: {ex}"
 
@@ -80,12 +106,12 @@ async def check(ctx, username: str = None):
     if not username:
         return await ctx.send("Usage: `!check <username>`")
     errors = validate(username)
-    api_ok, api_msg = check_api(TOKEN)
+    available, avail_msg = check_username_available(username, TOKEN)
     if errors:
-        return await ctx.send(f"❌ `{username}` NOT valid (format errors):\n" + "\n".join(f"• {e}" for e in errors))
-    if not api_ok:
-        return await ctx.send(f"❌ `{username}` NOT verified — API check failed. {api_msg}")
-    msg = f"✅ `{username}` passes format rules. {api_msg}\nNote: Discord does not expose public endpoint to confirm if another user has this name."
+        return await ctx.send(f"❌ `{username}` NOT available (format errors):\n" + "\n".join(f"• {e}" for e in errors))
+    if not available:
+        return await ctx.send(f"❌ `{username}` NOT available (used or taken by someone else). API: {avail_msg}")
+    msg = f"✅ `{username}` IS AVAILABLE (verified by briefly claiming via API). API: {avail_msg}"
     await ctx.send(msg)
     send_webhook(username)
 
