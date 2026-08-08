@@ -22,7 +22,7 @@ body { font-family: 'Inter', sans-serif; background: #0b0c15; color: #e6e6f0; }
 <main class="w-full max-w-sm px-6">
   <div class="glass text-center">
     <h1 class="text-3xl font-extrabold text-white mb-1">Checker</h1>
-    <p class="text-xs text-white/30 mb-6 mono">Discord · Webhook · Auto-Scan</p>
+    <p class="text-xs text-white/30 mb-6 mono">Discord · Continuous Scan</p>
 
     <label class="block text-[11px] font-semibold text-white/40 text-left mb-2">Characters</label>
     <div class="grid grid-cols-5 gap-2 mb-4" id="charButtons">
@@ -36,8 +36,8 @@ body { font-family: 'Inter', sans-serif; background: #0b0c15; color: #e6e6f0; }
     <label class="block text-[11px] font-semibold text-white/40 text-left mb-2">Max Limit</label>
     <input id="maxLimit" type="number" value="1000000" min="1" max="1000000" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#5865F2] focus:ring-1 focus:ring-[#5865F2]/30 transition mono mb-4" placeholder="1000000">
 
-    <label class="block text-[11px] font-semibold text-white/40 text-left mb-2">API Key</label>
-    <input id="apiKey" type="password" placeholder="Discord Bot Token / API Key" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#5865F2] focus:ring-1 focus:ring-[#5865F2]/30 transition mono mb-4">
+    <label class="block text-[11px] font-semibold text-white/40 text-left mb-2">API Key (Discord Bot Token)</label>
+    <input id="apiKey" type="password" placeholder="Bot Token" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#5865F2] focus:ring-1 focus:ring-[#5865F2]/30 transition mono mb-4">
 
     <label class="block text-[11px] font-semibold text-white/40 text-left mb-2">Webhook URL</label>
     <input id="webhookUrl" type="url" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#5865F2] focus:ring-1 focus:ring-[#5865F2]/30 transition mono mb-5">
@@ -49,7 +49,7 @@ body { font-family: 'Inter', sans-serif; background: #0b0c15; color: #e6e6f0; }
     <div id="usernameMsg" class="text-xs font-mono text-amber-300 mt-1 hidden">✓ Got username</div>
     <div id="status" class="text-[11px] font-mono text-white/40 mt-2">Ready · Click Start</div>
     <div class="text-[10px] text-white/20 mt-4 font-mono leading-relaxed">
-      Note: This checks if the username format is valid (available to claim). Checking if a username is actually used by someone else requires Discord API access.
+      Note: Checks format rules. Webhook sends only when a valid non-claimed username is found.
     </div>
     <div id="results" class="space-y-2 mt-4 text-left"></div>
   </div>
@@ -70,7 +70,6 @@ function selectChars(n) {
 }
 
 function generateUsername(len) {
-  // Uppercase, lowercase, numbers, _, .
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.';
   const result = [];
   for (let i = 0; i < len; i++) result.push(chars[Math.floor(Math.random() * chars.length)]);
@@ -82,7 +81,6 @@ function generateUsername(len) {
 }
 
 function checkAvailable(username) {
-  // Check rules: at least 1 uppercase, 1 lowercase, 1 number OR special
   const hasUpper = /[A-Z]/.test(username);
   const hasLower = /[a-z]/.test(username);
   const hasNumber = /[0-9]/.test(username);
@@ -92,7 +90,7 @@ function checkAvailable(username) {
   return hasUpper && hasLower && (hasNumber || hasSpecial) && notAllSame && validLength;
 }
 
-async function sendWebhook(message, username, available) {
+async function sendWebhookOnlyValid(username) {
   const url = document.getElementById('webhookUrl').value.trim();
   if (!url) return;
   try {
@@ -103,11 +101,11 @@ async function sendWebhook(message, username, available) {
       body: JSON.stringify({
         username: 'Username Checker',
         avatar_url: 'https://i.imgur.com/AfFp7pu.png',
-        content: message + (document.getElementById('apiKey').value.trim() ? '\n(API key configured)' : '\n(No API key set)'),
+        content: `✓ Valid non-claimed username found: \`${username}\``,
         embeds: [{
-          title: available !== undefined ? (available ? '✓ Available (format OK)' : '✗ Used / Taken') : 'Status',
-          description: username ? `Username: \`${username}\`` : '',
-          color: available ? 0x57F287 : (available === false ? 0xED4245 : 0x5865F2)
+          title: `✓ Valid (non-claimed) — ${username}`,
+          description: `Length: ${username.length} chars | API Key: ${apiKey ? 'set' : 'not set'}`,
+          color: 0x57F287
         }]
       })
     });
@@ -119,13 +117,11 @@ function startScan() {
   scanning = true;
   attempts = 0;
   maxLimitVal = Math.min(parseInt(document.getElementById('maxLimit').value) || 1000000, 1000000);
+  document.getElementById('startBtn').classList.add('hidden');
+  document.getElementById('stopBtn').classList.remove('hidden');
   document.getElementById('startMsg').classList.remove('hidden');
   document.getElementById('usernameMsg').classList.add('hidden');
   document.getElementById('status').textContent = 'Scanning...';
-  document.getElementById('startBtn').classList.add('hidden');
-  document.getElementById('stopBtn').classList.remove('hidden');
-  document.getElementById('startBtn').textContent = 'Start';
-
 
   scanTimer = setInterval(() => {
     if (attempts >= maxLimitVal) {
@@ -133,7 +129,6 @@ function startScan() {
       document.getElementById('status').textContent = 'Stopped · reached ' + attempts + ' / ' + maxLimitVal;
       document.getElementById('results').innerHTML = `
         <div class="glass rounded-xl px-4 py-3 text-sm text-white/60">Used / Taken · reached ${attempts} / ${maxLimitVal}</div>`;
-
       return;
     }
     attempts++;
@@ -149,7 +144,7 @@ function startScan() {
           <span class="font-mono font-extrabold text-white ml-2">${username}</span>
           <span class="text-white/30 ml-2">· ${selectedChars} chars · ${attempts} tries</span>
         </div>`;
-      sendWebhook('✓ Valid non-claimed username found', username, true);
+      sendWebhookOnlyValid(username);
     } else {
       document.getElementById('usernameMsg').classList.add('hidden');
       document.getElementById('startMsg').classList.remove('hidden');

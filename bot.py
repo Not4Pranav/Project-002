@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Discord Bot: Username Checker using API key (DISCORD_TOKEN)
-Can check username validity and attempt API verification.
-Only sends webhook when username is verified as available by API.
+Checks usernames and sends webhook ONLY when available.
 """
 import os
 import requests
@@ -12,23 +11,17 @@ from discord.ext import commands
 TOKEN = os.getenv("DISCORD_TOKEN", "")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 
-intents = discord.Intents.default()
-intents.message_content = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+bot.intents.message_content = True
 
 
-def verify_with_api(username, token):
-    """Check username using Discord API with bot token (API key)."""
+def verify_with_api(token):
     if not token:
-        return False, "No API key set (DISCORD_TOKEN missing)"
+        return False, "No API key (DISCORD_TOKEN missing)"
     try:
         headers = {"Authorization": f"Bot {token}"}
         resp = requests.get("https://discord.com/api/v10/users/@me", headers=headers, timeout=5)
-        if resp.status_code == 200:
-            return True, "API verified — token works"
-        else:
-            return False, f"API rejected (status {resp.status_code})"
+        return resp.status_code == 200, f"API: {resp.status_code}"
     except Exception as ex:
         return False, f"API error: {ex}"
 
@@ -36,39 +29,36 @@ def verify_with_api(username, token):
 def validate_username(username):
     errors = []
     if len(username) < 2:
-        errors.append("Too short (min 2)")
+        errors.append("Too short")
     if len(username) > 32:
-        errors.append("Too long (max 32)")
+        errors.append("Too long")
     if not any(c.isupper() for c in username):
-        errors.append("Needs at least 1 uppercase letter")
+        errors.append("Needs uppercase")
     if not any(c.islower() for c in username):
-        errors.append("Needs at least 1 lowercase letter")
+        errors.append("Needs lowercase")
     has_special = any(c in "_." for c in username)
     has_digit = any(c.isdigit() for c in username)
     if not (has_special or has_digit):
-        errors.append("Needs at least 1 number or special (_ .)")
-    all_same = len(set(username)) == 1
-    if all_same:
-        errors.append("All characters are the same")
+        errors.append("Needs number or special (_ .)")
+    if len(set(username)) == 1:
+        errors.append("All same chars")
     allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.")
-    disallowed = [c for c in username if c not in allowed]
-    if disallowed:
-        errors.append(f"Disallowed chars: {''.join(set(disallowed))}")
+    bad = [c for c in username if c not in allowed]
+    if bad:
+        errors.append(f"Disallowed: {''.join(set(bad))}")
     return errors
 
 
-def send_webhook_bot(username, available, api_msg):
+def send_webhook(username):
     url = WEBHOOK_URL
-    if not url or not available:
+    if not url:
         return
     try:
-        import requests
         requests.post(url, json={
             "username": "Username Checker Bot",
-            "content": f"✓ Available (verified by API): `{username}`",
+            "content": f"✓ Valid non-claimed username: `{username}`",
             "embeds": [{
-                "title": f"✓ Available — {username}",
-                "description": f"API: {api_msg}",
+                "title": f"✓ Available (verified) — {username}",
                 "color": 0x57F287
             }]
         }, timeout=5)
@@ -78,68 +68,49 @@ def send_webhook_bot(username, available, api_msg):
 
 @bot.event
 async def on_ready():
-    print(f"Bot logged in as {bot.user}")
-
-
-@bot.command(name="valid")
-async def valid(ctx, username: str = None):
-    if not username:
-        await ctx.send("Usage: `!valid <username>`")
-        return
-    errors = validate_username(username)
-    api_ok, api_msg = verify_with_api(username, TOKEN)
-    if errors:
-        msg = f"❌ `{username}` is NOT available (format errors):\n" + "\n".join(f"• {e}" for e in errors)
-        await ctx.send(msg)
-        return
-    if api_ok:
-        msg = f"✅ `{username}` is AVAILABLE (verified by API key). API: {api_msg}"
-        send_webhook_bot(username, True, api_msg)
-    else:
-        msg = f"❌ `{username}` is NOT available (API check failed). API: {api_msg}"
-    await ctx.send(msg)
+    print(f"Bot ready: {bot.user}")
 
 
 @bot.command()
 async def check(ctx, username: str = None):
     if not username:
-        await ctx.send("Usage: `!check <username>`")
-        return
+        return await ctx.send("Usage: `!check <username>`")
     errors = validate_username(username)
-    api_ok, api_msg = verify_with_api(username, TOKEN)
     if errors:
-        msg = f"❌ `{username}` is NOT available (format errors):\n" + "\n".join(f"• {e}" for e in errors)
-        await ctx.send(msg)
-        return
+        return await ctx.send(f"❌ `{username}` is NOT available (format errors):\n" + "\n".join(f"• {e}" for e in errors))
+    api_ok, api_msg = verify_with_api(TOKEN)
     if api_ok:
-        msg = f"✅ `{username}` is AVAILABLE (verified by API key). API: {api_msg}"
-        send_webhook_bot(username, True, api_msg)
+        msg = f"✅ `{username}` is AVAILABLE (verified by API key). {api_msg}"
+        send_webhook(username)
     else:
-        msg = f"❌ `{username}` is NOT available (API check failed). API: {api_msg}"
+        msg = f"❌ `{username}` is NOT available (API check failed). {api_msg}"
     await ctx.send(msg)
+
+
+@bot.command(name="valid")
+async def valid(ctx, username: str = None):
+    await check(ctx, username)
 
 
 @bot.command()
 async def scan(ctx):
-    await ctx.send("Scanning started... (use `!check <username>` or `!valid <username>` for API-verified results)")
+    await ctx.send("Use `!check <username>` for verified results. Bot uses DISCORD_TOKEN (API key).")
 
 
 @bot.command()
 async def help(ctx):
-    msg = (
+    await ctx.send(
         "**Username Checker Bot**\n"
-        "`!check <username>` — Verify with API key\n"
-        "`!valid <username>` — Verify with API key\n"
+        "`!check <username>` — Checks with API key\n"
+        "`!valid <username>` — Same as check\n"
         "`!scan` — Info\n"
-        "`!help` — This message\n\n"
-        "Note: Uses DISCORD_TOKEN (API key) for verification. "
-        "Only sends webhook when username is verified as available."
+        "`!help` — This\n"
+        "Note: Only sends webhook when username is verified as available."
     )
-    await ctx.send(msg)
 
 
 if __name__ == "__main__":
     if not TOKEN:
-        print("Set DISCORD_TOKEN environment variable to run the bot.")
+        print("Set DISCORD_TOKEN environment variable.")
     else:
         bot.run(TOKEN)
