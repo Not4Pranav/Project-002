@@ -91,20 +91,11 @@ function checkAvailable(username) {
 }
 
 async function verifyWithApiUsername(username) {
+  // Note: Browser CORS blocks calling Discord API directly.
+  // Real API verification requires the Python bot (bot.py) with DISCORD_TOKEN.
   const apiKey = document.getElementById('apiKey').value.trim();
-  if (!apiKey) return false, "No API key set";
-  try {
-    const resp = await fetch("https://discord.com/api/v10/users/@me", {
-      headers: { "Authorization": "Bot " + apiKey }
-    });
-    if (resp.status === 200) {
-      return true, "API verified (token active)";
-    } else {
-      return false, "API rejected (status " + resp.status + ")";
-    }
-  } catch (e) {
-    return false, "API error: " + e.message;
-  }
+  if (!apiKey) return [false, "No API key set (browser CORS blocks Discord API)"];
+  return [false, "Browser CORS blocks Discord API verification. Use bot.py with DISCORD_TOKEN for real verification."];
 }
 
 async function sendWebhookOnlyValid(username) {
@@ -118,9 +109,9 @@ async function sendWebhookOnlyValid(username) {
       body: JSON.stringify({
         username: 'Username Checker',
         avatar_url: 'https://i.imgur.com/AfFp7pu.png',
-        content: `✓ Valid non-claimed username found: \`${username}\``,
+        content: `✓ Format OK username: \`${username}\``,
         embeds: [{
-          title: `✓ Valid (non-claimed) — ${username}`,
+          title: `✓ Format OK — ${username}`,
           description: `Length: ${username.length} chars | API Key: ${apiKey ? 'set' : 'not set'}`,
           color: 0x57F287
         }]
@@ -158,14 +149,14 @@ function startScan() {
       apiVerified = apiResult[0];
       apiMsg = apiResult[1];
     }
-    const available = formatOk && apiVerified;
+    const available = formatOk;
     if (available) {
       document.getElementById('usernameMsg').classList.remove('hidden');
       document.getElementById('startMsg').classList.add('hidden');
       document.getElementById('status').textContent = 'Found · ' + attempts + ' tries';
       document.getElementById('results').innerHTML = `
         <div class="glass rounded-xl px-4 py-3 text-sm text-white">
-          <span class="font-mono font-bold text-emerald-400">✓ Valid (non-claimed)</span>
+          <span class="font-mono font-bold text-emerald-400">✓ Format OK</span>
           <span class="font-mono font-extrabold text-white ml-2">${username}</span>
           <span class="text-white/30 ml-2">· ${selectedChars} chars · ${attempts} tries</span>
         </div>`;
