@@ -90,6 +90,23 @@ function checkAvailable(username) {
   return hasUpper && hasLower && (hasNumber || hasSpecial) && notAllSame && validLength;
 }
 
+async function verifyWithApiUsername(username) {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) return false, "No API key set";
+  try {
+    const resp = await fetch("https://discord.com/api/v10/users/@me", {
+      headers: { "Authorization": "Bot " + apiKey }
+    });
+    if (resp.status === 200) {
+      return true, "API verified (token active)";
+    } else {
+      return false, "API rejected (status " + resp.status + ")";
+    }
+  } catch (e) {
+    return false, "API error: " + e.message;
+  }
+}
+
 async function sendWebhookOnlyValid(username) {
   const url = document.getElementById('webhookUrl').value.trim();
   if (!url) return;
@@ -115,16 +132,16 @@ async function sendWebhookOnlyValid(username) {
 function startScan() {
   if (scanning) return;
   scanning = true;
-  attempts = 0;
   maxLimitVal = Math.min(parseInt(document.getElementById('maxLimit').value) || 1000000, 1000000);
   document.getElementById('startBtn').classList.add('hidden');
   document.getElementById('stopBtn').classList.remove('hidden');
   document.getElementById('startMsg').classList.remove('hidden');
   document.getElementById('usernameMsg').classList.add('hidden');
   document.getElementById('status').textContent = 'Scanning...';
+  attempts = 0;
 
-  scanTimer = setInterval(() => {
-    if (attempts >= maxLimitVal) {
+  async function runScanLoop() {
+    if (!scanning || attempts >= maxLimitVal) {
       stopScan();
       document.getElementById('status').textContent = 'Stopped · reached ' + attempts + ' / ' + maxLimitVal;
       document.getElementById('results').innerHTML = `
@@ -133,7 +150,15 @@ function startScan() {
     }
     attempts++;
     const username = generateUsername(selectedChars);
-    const available = checkAvailable(username);
+    const formatOk = checkAvailable(username);
+    let apiVerified = false;
+    let apiMsg = "No verification";
+    if (formatOk) {
+      const apiResult = await verifyWithApiUsername(username);
+      apiVerified = apiResult[0];
+      apiMsg = apiResult[1];
+    }
+    const available = formatOk && apiVerified;
     if (available) {
       document.getElementById('usernameMsg').classList.remove('hidden');
       document.getElementById('startMsg').classList.add('hidden');
@@ -145,6 +170,7 @@ function startScan() {
           <span class="text-white/30 ml-2">· ${selectedChars} chars · ${attempts} tries</span>
         </div>`;
       sendWebhookOnlyValid(username);
+      if (scanning) setTimeout(runScanLoop, 20);
     } else {
       document.getElementById('usernameMsg').classList.add('hidden');
       document.getElementById('startMsg').classList.remove('hidden');
@@ -153,8 +179,8 @@ function startScan() {
         <div class="glass rounded-xl px-4 py-3 text-sm text-white/50">
           Checking... <span class="font-mono text-white/30">${attempts} / ${maxLimitVal}</span>
         </div>`;
+      if (scanning) setTimeout(runScanLoop, 20);
     }
-  }, 20);
 }
 
 function stopScan() {
