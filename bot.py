@@ -2,6 +2,7 @@
 """
 Discord Bot: Username Checker using API key (DISCORD_TOKEN)
 Can check username validity and attempt API verification.
+Only sends webhook when username is verified as available by API.
 """
 import os
 import requests
@@ -42,12 +43,10 @@ def validate_username(username):
         errors.append("Needs at least 1 uppercase letter")
     if not any(c.islower() for c in username):
         errors.append("Needs at least 1 lowercase letter")
-    if not (any(c.isdigit() for c in username) or c in username for c in "_."):
-        # Actually check if any digit or special
-        has_special = any(c in "_." for c in username)
-        has_digit = any(c.isdigit() for c in username)
-        if not (has_special or has_digit):
-            errors.append("Needs at least 1 number or special (_ .)")
+    has_special = any(c in "_." for c in username)
+    has_digit = any(c.isdigit() for c in username)
+    if not (has_special or has_digit):
+        errors.append("Needs at least 1 number or special (_ .)")
     all_same = len(set(username)) == 1
     if all_same:
         errors.append("All characters are the same")
@@ -56,11 +55,6 @@ def validate_username(username):
     if disallowed:
         errors.append(f"Disallowed chars: {''.join(set(disallowed))}")
     return errors
-
-
-@bot.event
-async def on_ready():
-    print(f"Bot logged in as {bot.user}")
 
 
 def send_webhook_bot(username, available, api_msg):
@@ -82,6 +76,11 @@ def send_webhook_bot(username, available, api_msg):
         pass
 
 
+@bot.event
+async def on_ready():
+    print(f"Bot logged in as {bot.user}")
+
+
 @bot.command(name="valid")
 async def valid(ctx, username: str = None):
     if not username:
@@ -99,6 +98,7 @@ async def valid(ctx, username: str = None):
     else:
         msg = f"❌ `{username}` is NOT available (API check failed). API: {api_msg}"
     await ctx.send(msg)
+
 
 @bot.command()
 async def check(ctx, username: str = None):
@@ -121,18 +121,19 @@ async def check(ctx, username: str = None):
 
 @bot.command()
 async def scan(ctx):
-    await ctx.send("Scanning started... (this is a demo — real scanning needs a webhook URL configured)")
+    await ctx.send("Scanning started... (use `!check <username>` or `!valid <username>` for API-verified results)")
 
 
 @bot.command()
 async def help(ctx):
     msg = (
         "**Username Checker Bot**\n"
-        "`!check <username>` — Verify username validity\n"
-        "`!scan` — Start scanning demo\n"
+        "`!check <username>` — Verify with API key\n"
+        "`!valid <username>` — Verify with API key\n"
+        "`!scan` — Info\n"
         "`!help` — This message\n\n"
-        "Note: Bots **cannot change other users' usernames**. "
-        "Only the user or a server admin with Manage Nicknames can change names."
+        "Note: Uses DISCORD_TOKEN (API key) for verification. "
+        "Only sends webhook when username is verified as available."
     )
     await ctx.send(msg)
 
