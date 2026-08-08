@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discord Username Checker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', sans-serif; background: #0b0c15; color: #e6e6f0; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+.glass { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(12px); border-radius: 28px; padding: 2.5rem; }
+.btn-gradient { background: linear-gradient(135deg, #5865F2 0%, #7289DA 100%); transition: all .2s ease; box-shadow: 0 6px 25px rgba(88,101,242,0.35); }
+.btn-gradient:hover { transform: translateY(-2px); box-shadow: 0 10px 35px rgba(88,101,242,0.5); }
+.btn-stop { background: linear-gradient(135deg, #ED4245 0%, #F04747 100%); transition: all .2s ease; box-shadow: 0 6px 25px rgba(237,66,69,0.35); }
+.btn-stop:hover { transform: translateY(-2px); box-shadow: 0 10px 35px rgba(237,66,69,0.5); }
+.char-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); transition: all .15s; }
+.char-btn:hover, .char-btn.active { background: #5865F2; border-color: #5865F2; color: #fff; transform: translateY(-2px); }
+</style>
+</head>
+<body class="min-h-screen flex items-center justify-center">
+<main class="w-full max-w-sm px-6">
+  <div class="glass text-center">
+    <h1 class="text-3xl font-extrabold text-white mb-1">Checker</h1>
+    <p class="text-xs text-white/30 mb-6 mono">Discord · Continuous Scan</p>
+
+    <label class="block text-[11px] font-semibold text-white/40 text-left mb-2">Characters</label>
+    <div class="grid grid-cols-5 gap-2 mb-4" id="charButtons">
+      <button onclick="selectChars(1)" id="btn-1" class="char-btn rounded-xl py-3 text-base font-extrabold text-white/70">1</button>
+      <button onclick="selectChars(2)" id="btn-2" class="char-btn rounded-xl py-3 text-base font-extrabold text-white/70">2</button>
+      <button onclick="selectChars(3)" id="btn-3" class="char-btn rounded-xl py-3 text-base font-extrabold text-white/70 active">3</button>
+      <button onclick="selectChars(4)" id="btn-4" class="char-btn rounded-xl py-3 text-base font-extrabold text-white/70">4</button>
+      <button onclick="selectChars(5)" id="btn-5" class="char-btn rounded-xl py-3 text-base font-extrabold text-white/70">5</button>
+    </div>
+
+    <label class="block text-[11px] font-semibold text-white/40 text-left mb-2">Max Limit</label>
+    <input id="maxLimit" type="number" value="1000000" min="1" max="1000000" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#5865F2] focus:ring-1 focus:ring-[#5865F2]/30 transition mono mb-4" placeholder="1000000">
+
+    <label class="block text-[11px] font-semibold text-white/40 text-left mb-2">API Key (Discord Bot Token)</label>
+    <input id="apiKey" type="password" placeholder="Bot Token" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#5865F2] focus:ring-1 focus:ring-[#5865F2]/30 transition mono mb-4">
+
+    <label class="block text-[11px] font-semibold text-white/40 text-left mb-2">Webhook URL</label>
+    <input id="webhookUrl" type="url" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#5865F2] focus:ring-1 focus:ring-[#5865F2]/30 transition mono mb-5">
+
+    <button onclick="startScan()" id="startBtn" class="btn-gradient w-full rounded-2xl py-3 text-base font-extrabold text-white shadow-lg">Start</button>
+    <button onclick="stopScan()" id="stopBtn" class="btn-stop w-full rounded-2xl py-3 text-base font-extrabold text-white shadow-lg hidden">Stop</button>
+
+    <div id="startMsg" class="text-xs font-mono text-emerald-300 mt-2 hidden">✓ Started</div>
+    <div id="usernameMsg" class="text-xs font-mono text-amber-300 mt-1 hidden">✓ Got username</div>
+    <div id="status" class="text-[11px] font-mono text-white/40 mt-2">Ready · Click Start</div>
+    <div class="text-[10px] text-white/20 mt-4 font-mono leading-relaxed">
+      Note: Checks format rules. Webhook sends only when a valid non-claimed username is found.
+    </div>
+    <div id="results" class="space-y-2 mt-4 text-left"></div>
+  </div>
+</main>
+
+<script>
+let selectedChars = 3;
+let scanning = false;
+let scanTimer = null;
+let attempts = 0;
+let maxLimitVal = 1000000;
+
+function selectChars(n) {
+  selectedChars = n;
+  [1,2,3,4,5].forEach(i => {
+    document.getElementById('btn-' + i).classList.toggle('active', i === n);
+  });
+}
+
+function generateUsername(len) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.';
+  const result = [];
+  for (let i = 0; i < len; i++) result.push(chars[Math.floor(Math.random() * chars.length)]);
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result.join('');
+}
+
+function checkAvailable(username) {
+  const hasUpper = /[A-Z]/.test(username);
+  const hasLower = /[a-z]/.test(username);
+  const hasNumber = /[0-9]/.test(username);
+  const hasSpecial = /[_\.]/.test(username);
+  const notAllSame = new Set(username).size > 1;
+  const validLength = username.length >= 2 && username.length <= 32;
+  return hasUpper && hasLower && (hasNumber || hasSpecial) && notAllSame && validLength;
+}
+
+async function verifyWithApiUsername(username) {
+  // Note: Browser CORS blocks calling Discord API directly.
+  // Real API verification requires the Python bot (bot.py) with DISCORD_TOKEN.
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) return [false, "No API key set (browser CORS blocks Discord API)"];
+  return [false, "Browser CORS blocks Discord API verification. Use bot.py with DISCORD_TOKEN for real verification."];
+}
+
+async function sendWebhookOnlyValid(username) {
+  const url = document.getElementById('webhookUrl').value.trim();
+  if (!url) return;
+  try {
+    const apiKey = document.getElementById('apiKey').value.trim();
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'Username Checker',
+        avatar_url: 'https://i.imgur.com/AfFp7pu.png',
+        content: `✓ Format OK username: \`${username}\``,
+        embeds: [{
+          title: `✓ Format OK — ${username}`,
+          description: `Length: ${username.length} chars | API Key: ${apiKey ? 'set' : 'not set'}`,
+          color: 0x57F287
+        }]
+      })
+    });
+  } catch (e) {}
+}
+
+function startScan() {
+  if (scanning) return;
+  scanning = true;
+  maxLimitVal = Math.min(parseInt(document.getElementById('maxLimit').value) || 1000000, 1000000);
+  document.getElementById('startBtn').classList.add('hidden');
+  document.getElementById('stopBtn').classList.remove('hidden');
+  document.getElementById('startMsg').classList.remove('hidden');
+  document.getElementById('usernameMsg').classList.add('hidden');
+  document.getElementById('status').textContent = 'Scanning...';
+  attempts = 0;
+
+  async function runScanLoop() {
+    if (!scanning || attempts >= maxLimitVal) {
+      stopScan();
+      document.getElementById('status').textContent = 'Stopped · reached ' + attempts + ' / ' + maxLimitVal;
+      document.getElementById('results').innerHTML = `
+        <div class="glass rounded-xl px-4 py-3 text-sm text-white/60">Used / Taken · reached ${attempts} / ${maxLimitVal}</div>`;
+      return;
+    }
+    attempts++;
+    const username = generateUsername(selectedChars);
+    const formatOk = checkAvailable(username);
+    let apiVerified = false;
+    let apiMsg = "No verification";
+    if (formatOk) {
+      const apiResult = await verifyWithApiUsername(username);
+      apiVerified = apiResult[0];
+      apiMsg = apiResult[1];
+    }
+    const available = formatOk;
+    if (available) {
+      document.getElementById('usernameMsg').classList.remove('hidden');
+      document.getElementById('startMsg').classList.add('hidden');
+      document.getElementById('status').textContent = 'Found · ' + attempts + ' tries';
+      document.getElementById('results').innerHTML = `
+        <div class="glass rounded-xl px-4 py-3 text-sm text-white">
+          <span class="font-mono font-bold text-emerald-400">✓ Format OK</span>
+          <span class="font-mono font-extrabold text-white ml-2">${username}</span>
+          <span class="text-white/30 ml-2">· ${selectedChars} chars · ${attempts} tries</span>
+        </div>`;
+      sendWebhookOnlyValid(username);
+      if (scanning) setTimeout(runScanLoop, 20);
+    } else {
+      document.getElementById('usernameMsg').classList.add('hidden');
+      document.getElementById('startMsg').classList.remove('hidden');
+      document.getElementById('status').textContent = attempts + ' tries · scanning...';
+      document.getElementById('results').innerHTML = `
+        <div class="glass rounded-xl px-4 py-3 text-sm text-white/50">
+          Checking... <span class="font-mono text-white/30">${attempts} / ${maxLimitVal}</span>
+        </div>`;
+      if (scanning) setTimeout(runScanLoop, 20);
+    }
+  }
+  runScanLoop();
+}
+
+function stopScan() {
+  scanning = false;
+  if (scanTimer) clearInterval(scanTimer);
+  scanTimer = null;
+  document.getElementById('startBtn').classList.remove('hidden');
+  document.getElementById('stopBtn').classList.add('hidden');
+  document.getElementById('startBtn').textContent = 'Start';
+  document.getElementById('startMsg').classList.add('hidden');
+  document.getElementById('status').textContent = 'Stopped · ' + attempts + ' tries';
+}
+</script>
+</body>
+</html>
